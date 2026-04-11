@@ -1,0 +1,370 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
+import type { User } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
+
+const RECORD_SECONDS = 15;
+
+type Task = {
+  id: string;
+  title: string;
+  remind_at: string | null;
+  notes: string | null;
+  completed: boolean;
+  created_at: string;
+};
+
+type ExtractedTask = { title: string; remind_at: string | null; notes: string | null };
+
+function formatRemind(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh" });
+  const dStr = d.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh" });
+  const time = d.toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" });
+  if (todayStr === dStr) return `اليوم ${time}`;
+  return `${dStr} ${time}`;
+}
+
+function isUrgent(iso: string | null): boolean {
+  if (!iso) return false;
+  const diff = new Date(iso).getTime() - Date.now();
+  return diff > 0 && diff < 60 * 60 * 1000;
+}
+
+export default function HomePage() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [recording, setRecording]   = useState(false);
+  const [countdown, setCountdown]   = useState(RECORD_SECONDS);
+  const [transcript, setTranscript] = useState("");
+  const [processing, setProcessing] = useState(false);
+
+  const [preview, setPreview]       = useState<ExtractedTask | null>(null);
+  const [editTitle, setEditTitle]   = useState("");
+  const [editRemind, setEditRemind] = useState("");
+  const [editNotes, setEditNotes]   = useState("");
+  const [saving, setSaving]         = useState(false);
+
+  const recognitionRef = useRef<unknown>(null);
+  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { router.push("/login"); return; }
+      setUser(session.user);
+      void loadTasks(session.user.id);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!session) { router.push("/login"); return; }
+      setUser(session.user);
+    });
+    return () => subscription.unsubscribe();
+  }, [router]);
+
+  async function loadTasks(uid: string) {
+    setLoading(true);
+    const { data } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", uid)
+      .eq("completed", false)
+      .order("remind_at", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false });
+    setTasks((data as Task[]) ?? []);
+    setLoading(false);
+  }
+
+  function startRecording() {
+    const SR = (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown }).SpeechRecognition
+            ?? (window as unknown as { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition;
+    if (!SR) { alert("متصفحك لا يدعم التسجيل الصوتي، جرب Chrome"); return; }
+
+    setTranscript("");
+    setCountdown(RECORD_SECONDS);
+
+    const rec = new (SR as new () => {
+      lang: string; continuous: boolean; interimResults: boolean;
+      start(): void; stop(): void;
+      onresult: ((e: { results: { length: number; [i: number]: { [j: number]: { transcript: string } } } }) => void) | null;
+      onend: (() => void) | null;
+    })();
+    rec.lang = "ar-SA";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      let t = "";
+      for (let i = 0; i < e.results.length; i++) t += e.results[i]![0]!.transcript;
+      setTranscript(t);
+    };
+    rec.onend = () => stopRecording();
+    rec.start();
+    recognitionRef.current = rec;
+    setRecording(true);
+
+    let left = RECORD_SECONDS;
+    timerRef.current = setInterval(() => {
+      left -= 1;
+      setCountdown(left);
+      if (left <= 0) stopRecording();
+    }, 1000);
+  }
+
+  function stopRecording() {
+    (recognitionRef.current as { stop(): void } | null)?.stop();
+    recognitionRef.current = null;
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    setRecording(false);
+    setCountdown(RECORD_SECONDS);
+  }
+
+  useEffect(() => {
+    if (!recording && transcript.trim()) {
+      void processTranscript(transcript.trim());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
+
+  async function processTranscript(text: string) {
+    setProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/extract-task", {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${session!.access_token}`,
+        },
+        body: JSON.stringify({ transcript: text }),
+      });
+      const json = (await res.json()) as { task?: ExtractedTask; error?: string };
+      if (!res.ok || !json.task) { alert(json.error ?? "فشل الاستخراج"); return; }
+      setPreview(json.task);
+      setEditTitle(json.task.title);
+      setEditRemind(json.task.remind_at ? new Date(json.task.remind_at).toISOString().slice(0, 16) : "");
+      setEditNotes(json.task.notes ?? "");
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!editTitle.trim()) return;
+    setSaving(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/save-task", {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${session!.access_token}`,
+      },
+      body: JSON.stringify({
+        title:     editTitle.trim(),
+        remind_at: editRemind ? new Date(editRemind).toISOString() : null,
+        notes:     editNotes.trim() || null,
+        transcript,
+      }),
+    });
+    const json = (await res.json()) as { task?: Task; error?: string };
+    if (res.ok && json.task) {
+      setTasks((prev) => [json.task!, ...prev].sort((a, b) => {
+        if (a.remind_at && b.remind_at) return new Date(a.remind_at).getTime() - new Date(b.remind_at).getTime();
+        if (a.remind_at) return -1;
+        if (b.remind_at) return 1;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }));
+      if (editRemind && "Notification" in window) {
+        if (Notification.permission === "granted") scheduleNotification(editTitle.trim(), editRemind);
+        else if (Notification.permission !== "denied") {
+          const perm = await Notification.requestPermission();
+          if (perm === "granted") scheduleNotification(editTitle.trim(), editRemind);
+        }
+      }
+      setPreview(null);
+      setTranscript("");
+    } else alert(json.error ?? "فشل الحفظ");
+    setSaving(false);
+  }
+
+  function scheduleNotification(title: string, isoTime: string) {
+    const delay = new Date(isoTime).getTime() - Date.now();
+    if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
+      setTimeout(() => new Notification("جوهر ⏰", { body: title, icon: "/icon-192.png" }), delay);
+    }
+  }
+
+  async function completeTask(id: string) {
+    const { data: { session } } = await supabase.auth.getSession();
+    await fetch(`/api/complete-task?id=${id}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${session!.access_token}` },
+    });
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  async function deleteTask(id: string) {
+    const { data: { session } } = await supabase.auth.getSession();
+    await fetch(`/api/delete-task?id=${id}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${session!.access_token}` },
+    });
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  const meta = user?.user_metadata as { full_name?: string; avatar_url?: string } | undefined;
+
+  if (!user) return null;
+
+  return (
+    <main className="flex min-h-screen flex-col bg-[#0f0f0f] font-sans" dir="rtl"
+      style={{ paddingTop: "var(--safe-top)", paddingBottom: "var(--safe-bottom)" }}>
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-white">جوهر 💎</h1>
+          <p className="text-xs text-white/40">
+            {tasks.length > 0 ? `${tasks.length} مهمة بانتظارك` : "لا توجد مهام — ابدأ بالتسجيل"}
+          </p>
+        </div>
+        <button onClick={() => void supabase.auth.signOut()} className="shrink-0">
+          {meta?.avatar_url
+            ? <img src={meta.avatar_url} alt="avatar" className="size-9 rounded-full object-cover opacity-80" />
+            : <div className="size-9 rounded-full bg-violet-700 flex items-center justify-center text-sm font-bold text-white">
+                {(meta?.full_name ?? "؟")[0]}
+              </div>
+          }
+        </button>
+      </div>
+
+      {/* زر التسجيل */}
+      <div className="flex flex-col items-center gap-4 py-8">
+        <div className="relative flex items-center justify-center">
+          {recording && (
+            <>
+              <span className="pulse-ring absolute size-40 rounded-full bg-violet-500/30" />
+              <span className="pulse-ring absolute size-52 rounded-full bg-violet-500/15" style={{ animationDelay: "0.4s" }} />
+            </>
+          )}
+          <button
+            type="button"
+            onClick={recording ? stopRecording : startRecording}
+            disabled={processing}
+            className={`relative z-10 flex size-32 flex-col items-center justify-center rounded-full text-white shadow-2xl transition-all active:scale-95 disabled:opacity-40 ${
+              recording
+                ? "bg-red-500 shadow-red-500/40"
+                : "bg-gradient-to-br from-violet-500 to-purple-700 shadow-violet-500/40"
+            }`}
+          >
+            {recording ? (
+              <>
+                <span className="text-3xl">⏹</span>
+                <span className="mt-1 text-2xl font-extrabold tabular-nums">{countdown}</span>
+              </>
+            ) : processing ? (
+              <span className="size-8 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+            ) : (
+              <>
+                <span className="text-4xl">🎙️</span>
+                <span className="mt-1 text-xs font-semibold opacity-80">اضغط للتسجيل</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {processing && (
+          <p className="text-sm font-semibold text-violet-400 animate-pulse">✨ جوهر يحلّل كلامك...</p>
+        )}
+
+        {recording && transcript && (
+          <div className="mx-6 max-w-sm rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
+            <p className="text-xs text-white/40 mb-1">ما قلته:</p>
+            <p className="text-sm text-white/80">{transcript}</p>
+          </div>
+        )}
+      </div>
+
+      {/* نافذة مراجعة المهمة */}
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/70 backdrop-blur-sm" onClick={() => setPreview(null)}>
+          <div className="w-full rounded-t-3xl bg-[#1a1a1a] p-6 space-y-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-white/20" />
+            <h2 className="text-lg font-extrabold text-white">✅ مهمتك جاهزة</h2>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-violet-400">المهمة</label>
+              <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
+                className="w-full rounded-2xl bg-white/8 border border-white/10 px-4 py-3 text-sm font-bold text-white outline-none focus:border-violet-500" />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-violet-400">وقت التذكير (اختياري)</label>
+              <input type="datetime-local" value={editRemind} onChange={(e) => setEditRemind(e.target.value)}
+                className="w-full rounded-2xl bg-white/8 border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-violet-500 [color-scheme:dark]" />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-violet-400">ملاحظات</label>
+              <input type="text" value={editNotes} onChange={(e) => setEditNotes(e.target.value)}
+                className="w-full rounded-2xl bg-white/8 border border-white/10 px-4 py-3 text-sm text-white/70 outline-none focus:border-violet-500" />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={() => setPreview(null)}
+                className="flex-1 rounded-2xl border border-white/15 py-3 text-sm font-bold text-white/60 hover:bg-white/5">
+                إلغاء
+              </button>
+              <button type="button" onClick={() => void handleSave()} disabled={saving || !editTitle.trim()}
+                className="flex-[2] rounded-2xl bg-violet-600 py-3 text-base font-bold text-white disabled:opacity-40 hover:bg-violet-500 transition-colors">
+                {saving ? "⏳ جاري الحفظ..." : "حفظ المهمة ✓"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* قائمة المهام */}
+      <div className="flex-1 px-4 pb-8 space-y-3">
+        {loading ? (
+          <div className="flex justify-center pt-8">
+            <span className="size-8 animate-spin rounded-full border-4 border-violet-500/30 border-t-violet-500" />
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 pt-8 text-center">
+            <span className="text-5xl opacity-20">💎</span>
+            <p className="text-sm text-white/30">اضغط زر التسجيل وقل مهمتك</p>
+          </div>
+        ) : (
+          tasks.map((task) => (
+            <div key={task.id}
+              className={`flex items-start gap-3 rounded-2xl border px-4 py-4 transition-all ${
+                isUrgent(task.remind_at) ? "border-amber-500/30 bg-amber-500/8" : "border-white/8 bg-white/5"
+              }`}>
+              <button type="button" onClick={() => void completeTask(task.id)}
+                className="mt-0.5 shrink-0 flex size-6 items-center justify-center rounded-full border-2 border-violet-500/60 hover:bg-violet-500/20 transition-colors" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white leading-snug">{task.title}</p>
+                {task.remind_at && (
+                  <p className={`mt-1 text-xs font-semibold ${isUrgent(task.remind_at) ? "text-amber-400" : "text-violet-400"}`}>
+                    ⏰ {formatRemind(task.remind_at)}
+                  </p>
+                )}
+                {task.notes && <p className="mt-1 text-xs text-white/40 truncate">{task.notes}</p>}
+              </div>
+              <button type="button" onClick={() => void deleteTask(task.id)}
+                className="shrink-0 text-white/20 hover:text-red-400 transition-colors text-lg leading-none">
+                ×
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </main>
+  );
+}
