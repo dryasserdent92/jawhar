@@ -57,13 +57,18 @@ export default function HomePage() {
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { router.push("/login"); return; }
-      setUser(session.user);
-      void loadTasks(session.user.id);
+      if (session) {
+        setUser(session.user);
+        void loadTasks(session.user.id);
+      } else {
+        setLoading(false);
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) { router.push("/login"); return; }
-      setUser(session.user);
+      if (session) {
+        setUser(session.user);
+        void loadTasks(session.user.id);
+      }
     });
     return () => subscription.unsubscribe();
   }, [router]);
