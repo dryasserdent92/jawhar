@@ -90,6 +90,13 @@ export default function HomePage() {
       if (session) {
         setUser(session.user);
         void loadTasks(session.user.id);
+        // استرجع transcript بعد OAuth redirect
+        const pending = sessionStorage.getItem("pending_transcript");
+        if (pending) {
+          sessionStorage.removeItem("pending_transcript");
+          setTranscript(pending);
+          void processTranscriptWithSession(pending, session.access_token);
+        }
       }
     });
     return () => subscription.unsubscribe();
