@@ -26,7 +26,23 @@ function formatRemind(iso: string | null): string {
   const dStr = d.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh" });
   const time = d.toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" });
   if (todayStr === dStr) return `اليوم ${time}`;
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh" });
+  if (tomorrowStr === dStr) return `الغد ${time}`;
   return `${dStr} ${time}`;
+}
+
+function getDayLabel(iso: string | null): string {
+  if (!iso) return "بدون موعد";
+  const d = new Date(iso);
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh" });
+  const dStr = d.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh" });
+  if (todayStr === dStr) return "مهام اليوم";
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toLocaleDateString("ar-SA", { timeZone: "Asia/Riyadh" });
+  if (tomorrowStr === dStr) return "مهام الغد";
+  return `مهام ${dStr}`;
 }
 
 function isUrgent(iso: string | null): boolean {
@@ -46,11 +62,10 @@ export default function HomePage() {
   const [transcript, setTranscript] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  const [preview, setPreview]       = useState<ExtractedTask | null>(null);
-  const [editTitle, setEditTitle]   = useState("");
-  const [editRemind, setEditRemind] = useState("");
-  const [editNotes, setEditNotes]   = useState("");
-  const [saving, setSaving]         = useState(false);
+  /* checklist preview */
+  const [extractedTasks, setExtractedTasks] = useState<ExtractedTask[]>([]);
+  const [checked, setChecked]               = useState<Set<number>>(new Set());
+  const [saving, setSaving]                 = useState(false);
 
   const recognitionRef = useRef<unknown>(null);
   const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -140,64 +155,42 @@ export default function HomePage() {
     setProcessing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
+        return;
+      }
       const res = await fetch("/api/extract-task", {
         method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": `Bearer ${session!.access_token}`,
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
         body: JSON.stringify({ transcript: text }),
       });
-      const json = (await res.json()) as { task?: ExtractedTask; error?: string };
-      if (!res.ok || !json.task) { alert(json.error ?? "فشل الاستخراج"); return; }
-      setPreview(json.task);
-      setEditTitle(json.task.title);
-      setEditRemind(json.task.remind_at ? new Date(json.task.remind_at).toISOString().slice(0, 16) : "");
-      setEditNotes(json.task.notes ?? "");
+      const json = (await res.json()) as { tasks?: ExtractedTask[]; error?: string };
+      if (!res.ok || !json.tasks?.length) { alert(json.error ?? "فشل الاستخراج"); return; }
+      setExtractedTasks(json.tasks);
+      setChecked(new Set(json.tasks.map((_, i) => i))); // كل المهام محددة افتراضياً
     } finally {
       setProcessing(false);
     }
   }
 
   async function handleSave() {
-    if (!editTitle.trim()) return;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
       return;
     }
     setSaving(true);
-    const res = await fetch("/api/save-task", {
-      method: "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${session!.access_token}`,
-      },
-      body: JSON.stringify({
-        title:     editTitle.trim(),
-        remind_at: editRemind ? new Date(editRemind).toISOString() : null,
-        notes:     editNotes.trim() || null,
-        transcript,
-      }),
-    });
-    const json = (await res.json()) as { task?: Task; error?: string };
-    if (res.ok && json.task) {
-      setTasks((prev) => [json.task!, ...prev].sort((a, b) => {
-        if (a.remind_at && b.remind_at) return new Date(a.remind_at).getTime() - new Date(b.remind_at).getTime();
-        if (a.remind_at) return -1;
-        if (b.remind_at) return 1;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }));
-      if (editRemind && "Notification" in window) {
-        if (Notification.permission === "granted") scheduleNotification(editTitle.trim(), editRemind);
-        else if (Notification.permission !== "denied") {
-          const perm = await Notification.requestPermission();
-          if (perm === "granted") scheduleNotification(editTitle.trim(), editRemind);
-        }
-      }
-      setPreview(null);
-      setTranscript("");
-    } else alert(json.error ?? "فشل الحفظ");
+    const toSave = extractedTasks.filter((_, i) => checked.has(i));
+    for (const task of toSave) {
+      await fetch("/api/save-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+        body: JSON.stringify({ title: task.title, remind_at: task.remind_at, notes: task.notes, transcript }),
+      });
+    }
+    await loadTasks(session.user.id);
+    setExtractedTasks([]);
+    setTranscript("");
     setSaving(false);
   }
 
@@ -225,6 +218,14 @@ export default function HomePage() {
     });
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }
+
+  /* تجميع المهام المستخرجة حسب اليوم */
+  const groupedExtracted = extractedTasks.reduce<Record<string, number[]>>((acc, task, i) => {
+    const label = getDayLabel(task.remind_at);
+    if (!acc[label]) acc[label] = [];
+    acc[label]!.push(i);
+    return acc;
+  }, {});
 
   const meta = user?.user_metadata as { full_name?: string; avatar_url?: string } | undefined;
 
@@ -274,9 +275,7 @@ export default function HomePage() {
             onClick={recording ? stopRecording : startRecording}
             disabled={processing}
             className={`relative z-10 flex size-32 flex-col items-center justify-center rounded-full text-white shadow-2xl transition-all active:scale-95 disabled:opacity-40 ${
-              recording
-                ? "bg-red-500 shadow-red-500/40"
-                : "bg-gradient-to-br from-violet-500 to-purple-700 shadow-violet-500/40"
+              recording ? "bg-red-500 shadow-red-500/40" : "bg-gradient-to-br from-violet-500 to-purple-700 shadow-violet-500/40"
             }`}
           >
             {recording ? (
@@ -294,11 +293,7 @@ export default function HomePage() {
             )}
           </button>
         </div>
-
-        {processing && (
-          <p className="text-sm font-semibold text-violet-400 animate-pulse">✨ جوهر يحلّل كلامك...</p>
-        )}
-
+        {processing && <p className="text-sm font-semibold text-violet-400 animate-pulse">✨ جوهر يحلّل كلامك...</p>}
         {recording && transcript && (
           <div className="mx-6 max-w-sm rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
             <p className="text-xs text-white/40 mb-1">ما قلته:</p>
@@ -307,46 +302,66 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* نافذة مراجعة المهمة */}
-      {preview && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/70 backdrop-blur-sm" onClick={() => setPreview(null)}>
-          <div className="w-full rounded-t-3xl bg-[#1a1a1a] p-6 space-y-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-white/20" />
-            <h2 className="text-lg font-extrabold text-white">✅ مهمتك جاهزة</h2>
+      {/* ── Checklist Preview ── */}
+      {extractedTasks.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/70 backdrop-blur-sm" onClick={() => setExtractedTasks([])}>
+          <div className="w-full max-h-[85vh] overflow-y-auto rounded-t-3xl bg-[#1a1a1a] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
+            <h2 className="text-lg font-extrabold text-white mb-4">📋 مهامك جاهزة</h2>
 
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-violet-400">المهمة</label>
-              <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full rounded-2xl bg-white/8 border border-white/10 px-4 py-3 text-sm font-bold text-white outline-none focus:border-violet-500" />
-            </div>
+            {Object.entries(groupedExtracted).map(([label, indices]) => (
+              <div key={label} className="mb-5">
+                <p className="text-xs font-bold text-violet-400 mb-2 uppercase tracking-wide">{label}</p>
+                <div className="space-y-2">
+                  {indices.map((i) => {
+                    const task = extractedTasks[i]!;
+                    const isChecked = checked.has(i);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setChecked((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i); else next.add(i);
+                          return next;
+                        })}
+                        className={`w-full flex items-center gap-3 rounded-2xl border px-4 py-3 text-right transition-all ${
+                          isChecked ? "border-violet-500/40 bg-violet-500/10" : "border-white/8 bg-white/3 opacity-50"
+                        }`}
+                      >
+                        <span className={`shrink-0 flex size-6 items-center justify-center rounded-full border-2 transition-colors ${
+                          isChecked ? "border-violet-500 bg-violet-500" : "border-white/30"
+                        }`}>
+                          {isChecked && <span className="text-white text-xs font-bold">✓</span>}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-white">{task.title}</p>
+                          {task.remind_at && (
+                            <p className="text-xs text-violet-400 mt-0.5">⏰ {formatRemind(task.remind_at)}</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-violet-400">وقت التذكير (اختياري)</label>
-              <input type="datetime-local" value={editRemind} onChange={(e) => setEditRemind(e.target.value)}
-                className="w-full rounded-2xl bg-white/8 border border-white/10 px-4 py-3 text-sm text-white outline-none focus:border-violet-500 [color-scheme:dark]" />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-violet-400">ملاحظات</label>
-              <input type="text" value={editNotes} onChange={(e) => setEditNotes(e.target.value)}
-                className="w-full rounded-2xl bg-white/8 border border-white/10 px-4 py-3 text-sm text-white/70 outline-none focus:border-violet-500" />
-            </div>
-
-            <div className="flex gap-3 pt-1">
-              <button type="button" onClick={() => setPreview(null)}
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setExtractedTasks([])}
                 className="flex-1 rounded-2xl border border-white/15 py-3 text-sm font-bold text-white/60 hover:bg-white/5">
                 إلغاء
               </button>
-              <button type="button" onClick={() => void handleSave()} disabled={saving || !editTitle.trim()}
+              <button type="button" onClick={() => void handleSave()} disabled={saving || checked.size === 0}
                 className="flex-[2] rounded-2xl bg-violet-600 py-3 text-base font-bold text-white disabled:opacity-40 hover:bg-violet-500 transition-colors">
-                {saving ? "⏳ جاري الحفظ..." : "حفظ المهمة ✓"}
+                {saving ? "⏳ جاري الحفظ..." : `حفظ ${checked.size > 0 ? checked.size : ""} مهمة ✓`}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* قائمة المهام */}
+      {/* ── قائمة المهام ── */}
       <div className="flex-1 px-4 pb-8 space-y-3">
         {loading ? (
           <div className="flex justify-center pt-8">
@@ -375,9 +390,7 @@ export default function HomePage() {
                 {task.notes && <p className="mt-1 text-xs text-white/40 truncate">{task.notes}</p>}
               </div>
               <button type="button" onClick={() => void deleteTask(task.id)}
-                className="shrink-0 text-white/20 hover:text-red-400 transition-colors text-lg leading-none">
-                ×
-              </button>
+                className="shrink-0 text-white/20 hover:text-red-400 transition-colors text-lg leading-none">×</button>
             </div>
           ))
         )}
