@@ -75,6 +75,13 @@ export default function HomePage() {
       if (session) {
         setUser(session.user);
         void loadTasks(session.user.id);
+        // استرجع transcript المحفوظ قبل OAuth redirect
+        const pending = sessionStorage.getItem("pending_transcript");
+        if (pending) {
+          sessionStorage.removeItem("pending_transcript");
+          setTranscript(pending);
+          void processTranscriptWithSession(pending, session.access_token);
+        }
       } else {
         setLoading(false);
       }
@@ -86,7 +93,8 @@ export default function HomePage() {
       }
     });
     return () => subscription.unsubscribe();
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function loadTasks(uid: string) {
     setLoading(true);
@@ -151,11 +159,30 @@ export default function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording]);
 
+  async function processTranscriptWithSession(text: string, token: string) {
+    setProcessing(true);
+    try {
+      const res = await fetch("/api/extract-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ transcript: text }),
+      });
+      const json = (await res.json()) as { tasks?: ExtractedTask[]; error?: string };
+      if (!res.ok || !json.tasks?.length) { alert(json.error ?? "فشل الاستخراج"); return; }
+      setExtractedTasks(json.tasks);
+      setChecked(new Set(json.tasks.map((_, i) => i)));
+    } finally {
+      setProcessing(false);
+    }
+  }
+
   async function processTranscript(text: string) {
     setProcessing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
+        // احفظ الـ transcript قبل التحويل لـ Google
+        sessionStorage.setItem("pending_transcript", text);
         await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
         return;
       }
