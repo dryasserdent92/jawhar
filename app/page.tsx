@@ -55,11 +55,11 @@ function getDayLabel(iso: string | null): string {
 }
 
 const GROUPS = [
-  { key: "today",    label: "اليوم",       emoji: "☀️",  color: "from-violet-500/20 to-violet-500/5",  border: "border-violet-500/30" },
-  { key: "tomorrow", label: "الغد",        emoji: "🌙",  color: "from-blue-500/20 to-blue-500/5",      border: "border-blue-500/30"   },
-  { key: "week",     label: "هذا الأسبوع", emoji: "📅",  color: "from-teal-500/20 to-teal-500/5",      border: "border-teal-500/30"   },
-  { key: "later",    label: "لاحقاً",      emoji: "🗓",  color: "from-orange-500/20 to-orange-500/5",  border: "border-orange-500/30" },
-  { key: "none",     label: "بدون موعد",   emoji: "📌",  color: "from-white/10 to-white/5",            border: "border-white/15"      },
+  { key: "today",    label: "اليوم",       emoji: "☀️",  color: "from-blue-900/60 to-blue-900/20",    border: "border-blue-700/50"   },
+  { key: "tomorrow", label: "الغد",        emoji: "🌙",  color: "from-blue-950/60 to-blue-950/20",    border: "border-blue-800/40"   },
+  { key: "week",     label: "هذا الأسبوع", emoji: "📅",  color: "from-slate-800/60 to-slate-800/20",  border: "border-slate-600/40"  },
+  { key: "later",    label: "لاحقاً",      emoji: "🗓",  color: "from-slate-900/60 to-slate-900/20",  border: "border-slate-700/30"  },
+  { key: "none",     label: "بدون موعد",   emoji: "📌",  color: "from-black/40 to-black/10",          border: "border-white/10"      },
 ] as const;
 
 export default function HomePage() {
@@ -166,25 +166,25 @@ export default function HomePage() {
   const today = new Date().toLocaleDateString("ar-SA", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Riyadh" });
 
   return (
-    <main className="min-h-screen bg-[#0a0a0f] font-sans" dir="rtl"
+    <main className="min-h-screen bg-[#020408] font-sans" dir="rtl"
       style={{ paddingTop: "var(--safe-top)", paddingBottom: "var(--safe-bottom)" }}>
 
       {/* ── Hero Header ── */}
       <div className="relative overflow-hidden px-5 pt-8 pb-10">
-        <div className="absolute inset-0 bg-gradient-to-b from-violet-950/60 to-transparent" />
-        <div className="absolute -top-20 -right-20 size-64 rounded-full bg-violet-600/10 blur-3xl" />
-        <div className="absolute -top-10 -left-10 size-48 rounded-full bg-purple-600/10 blur-3xl" />
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-950/80 to-transparent" />
+        <div className="absolute -top-20 -right-20 size-64 rounded-full bg-blue-700/15 blur-3xl" />
+        <div className="absolute -top-10 -left-10 size-48 rounded-full bg-blue-900/20 blur-3xl" />
         <div className="relative">
-          <p className="text-xs text-violet-400/60 mb-1">{today}</p>
+          <p className="text-xs text-blue-400/60 mb-1">{today}</p>
           <h1 className="text-3xl font-black text-white tracking-tight">جوهر 🧑🏿‍💼</h1>
           <p className="text-sm text-violet-300/70 mt-1">سكرتيرك الشخصي — ما تحتاج أحد غيره</p>
 
           {/* إحصائية سريعة */}
           <div className="mt-5 flex gap-3">
             {[
-              { label: "اليوم", count: grouped.today?.length ?? 0, color: "bg-violet-500/20 text-violet-300" },
-              { label: "الغد",  count: grouped.tomorrow?.length ?? 0, color: "bg-blue-500/20 text-blue-300" },
-              { label: "الكل",  count: tasks.length, color: "bg-white/10 text-white/60" },
+              { label: "اليوم", count: grouped.today?.length ?? 0, color: "bg-blue-800/50 text-blue-300" },
+              { label: "الغد",  count: grouped.tomorrow?.length ?? 0, color: "bg-blue-900/50 text-blue-400" },
+              { label: "الكل",  count: tasks.length, color: "bg-white/5 text-white/50" },
             ].map(s => (
               <div key={s.label} className={`rounded-2xl px-4 py-2 ${s.color}`}>
                 <p className="text-xl font-black">{s.count}</p>
@@ -200,15 +200,15 @@ export default function HomePage() {
         <div className="relative flex items-center justify-center">
           {recording && (
             <>
-              <span className="pulse-ring absolute size-44 rounded-full bg-violet-500/20" />
-              <span className="pulse-ring absolute size-56 rounded-full bg-violet-500/10" style={{ animationDelay: "0.5s" }} />
+              <span className="pulse-ring absolute size-44 rounded-full bg-blue-500/20" />
+              <span className="pulse-ring absolute size-56 rounded-full bg-blue-500/10" style={{ animationDelay: "0.5s" }} />
             </>
           )}
           <button type="button" onClick={recording ? stopRecording : startRecording} disabled={processing}
             className={`relative z-10 flex size-28 flex-col items-center justify-center rounded-full text-white shadow-2xl transition-all duration-300 active:scale-95 disabled:opacity-40 ${
               recording
                 ? "bg-red-500 shadow-red-500/30 scale-110"
-                : "bg-gradient-to-br from-violet-500 to-purple-700 shadow-violet-500/30"
+                : "bg-gradient-to-br from-blue-600 to-blue-900 shadow-blue-900/50"
             }`}>
             {recording ? (
               <><span className="text-3xl">⏹</span><span className="mt-1 text-xl font-black tabular-nums">{countdown}</span></>
@@ -222,10 +222,10 @@ export default function HomePage() {
 
         {processing && (
           <div className="flex items-center gap-2">
-            <span className="size-1.5 animate-bounce rounded-full bg-violet-400" style={{ animationDelay: "0ms" }} />
-            <span className="size-1.5 animate-bounce rounded-full bg-violet-400" style={{ animationDelay: "150ms" }} />
-            <span className="size-1.5 animate-bounce rounded-full bg-violet-400" style={{ animationDelay: "300ms" }} />
-            <p className="text-xs font-semibold text-violet-400">جوهر يحلّل كلامك</p>
+            <span className="size-1.5 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: "0ms" }} />
+            <span className="size-1.5 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: "150ms" }} />
+            <span className="size-1.5 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: "300ms" }} />
+            <p className="text-xs font-semibold text-blue-400">جوهر يحلّل كلامك</p>
           </div>
         )}
 
@@ -296,7 +296,7 @@ export default function HomePage() {
       {/* ── Checklist Preview ── */}
       {extractedTasks.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/80 backdrop-blur-md" onClick={() => setExtractedTasks([])}>
-          <div className="w-full max-h-[88vh] overflow-y-auto rounded-t-3xl bg-[#141420] border-t border-white/10 p-6 shadow-2xl"
+          <div className="w-full max-h-[88vh] overflow-y-auto rounded-t-3xl bg-[#06101a] border-t border-blue-900/50 p-6 shadow-2xl"
             onClick={e => e.stopPropagation()}>
             <div className="mx-auto mb-5 h-1 w-12 rounded-full bg-white/20" />
             <h2 className="text-xl font-black text-white mb-1">📋 مهامك جاهزة</h2>
@@ -304,7 +304,7 @@ export default function HomePage() {
 
             {Object.entries(groupedExtracted).map(([label, indices]) => (
               <div key={label} className="mb-5">
-                <p className="text-xs font-bold text-violet-400 mb-2">{label}</p>
+                <p className="text-xs font-bold text-blue-400 mb-2">{label}</p>
                 <div className="space-y-2">
                   {indices.map(i => {
                     const task = extractedTasks[i]!;
@@ -313,17 +313,17 @@ export default function HomePage() {
                       <button key={i} type="button"
                         onClick={() => setChecked(prev => { const n = new Set(prev); isChecked ? n.delete(i) : n.add(i); return n; })}
                         className={`w-full flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-right transition-all ${
-                          isChecked ? "border-violet-500/50 bg-violet-500/15" : "border-white/8 bg-white/3 opacity-40"
+                          isChecked ? "border-blue-600/50 bg-blue-900/20" : "border-white/8 bg-white/3 opacity-40"
                         }`}>
                         <span className={`shrink-0 flex size-6 items-center justify-center rounded-full border-2 transition-all ${
-                          isChecked ? "border-violet-400 bg-violet-500" : "border-white/20"
+                          isChecked ? "border-blue-400 bg-blue-600" : "border-white/20"
                         }`}>
                           {isChecked && <span className="text-white text-[11px] font-black">✓</span>}
                         </span>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-white">{task.title}</p>
                           {task.remind_at && (
-                            <p className="text-xs text-violet-400 mt-0.5">
+                            <p className="text-xs text-blue-400 mt-0.5">
                               ⏰ {new Date(task.remind_at).toLocaleString("ar-SA", { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Riyadh" })}
                             </p>
                           )}
@@ -341,7 +341,7 @@ export default function HomePage() {
                 إلغاء
               </button>
               <button type="button" onClick={() => void handleSave()} disabled={saving || checked.size === 0}
-                className="flex-[2] rounded-2xl bg-gradient-to-l from-violet-600 to-purple-600 py-3.5 text-base font-black text-white disabled:opacity-30 transition-opacity">
+                className="flex-[2] rounded-2xl bg-gradient-to-l from-blue-600 to-blue-800 py-3.5 text-base font-black text-white disabled:opacity-30 transition-opacity">
                 {saving ? "⏳ جاري الحفظ..." : `حفظ ${checked.size} مهمة ✓`}
               </button>
             </div>
