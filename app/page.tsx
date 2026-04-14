@@ -161,8 +161,12 @@ export default function HomePage() {
 
   async function handleSave() {
     if (!editTitle.trim()) return;
-    setSaving(true);
     const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
+      return;
+    }
+    setSaving(true);
     const res = await fetch("/api/save-task", {
       method: "POST",
       headers: {
@@ -237,14 +241,23 @@ export default function HomePage() {
             {tasks.length > 0 ? `${tasks.length} مهمة بانتظارك` : "قل مهمتك وجوهر يرتبها لك"}
           </p>
         </div>
-        <button onClick={() => void supabase.auth.signOut()} className="shrink-0">
-          {meta?.avatar_url
-            ? <img src={meta.avatar_url} alt="avatar" className="size-9 rounded-full object-cover opacity-80" />
-            : <div className="size-9 rounded-full bg-violet-700 flex items-center justify-center text-sm font-bold text-white">
-                {(meta?.full_name ?? "؟")[0]}
-              </div>
-          }
-        </button>
+        {user ? (
+          <button onClick={() => void supabase.auth.signOut()} className="shrink-0">
+            {meta?.avatar_url
+              ? <img src={meta.avatar_url} alt="avatar" className="size-9 rounded-full object-cover opacity-80" />
+              : <div className="size-9 rounded-full bg-violet-700 flex items-center justify-center text-sm font-bold text-white">
+                  {(meta?.full_name ?? "؟")[0]}
+                </div>
+            }
+          </button>
+        ) : (
+          <button
+            onClick={() => void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } })}
+            className="rounded-2xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-500 transition-colors"
+          >
+            دخول
+          </button>
+        )}
       </div>
 
       {/* زر التسجيل */}
