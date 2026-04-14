@@ -117,6 +117,10 @@ export default function HomePage() {
   }
 
   function startRecording() {
+    if (!user) {
+      void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
+      return;
+    }
     const SR = (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown }).SpeechRecognition
             ?? (window as unknown as { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition;
     if (!SR) { alert("متصفحك لا يدعم التسجيل الصوتي، جرب Chrome"); return; }
@@ -321,8 +325,8 @@ export default function HomePage() {
               <span className="size-8 animate-spin rounded-full border-4 border-white/30 border-t-white" />
             ) : (
               <>
-                <span className="text-4xl">🎙️</span>
-                <span className="mt-1 text-xs font-semibold opacity-80">اضغط للتسجيل</span>
+                <span className="text-4xl">{user ? "🎙️" : "🔒"}</span>
+                <span className="mt-1 text-xs font-semibold opacity-80">{user ? "اضغط للتسجيل" : "سجّل دخولك"}</span>
               </>
             )}
           </button>
