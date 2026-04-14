@@ -224,8 +224,6 @@ export default function HomePage() {
 
   const meta = user?.user_metadata as { full_name?: string; avatar_url?: string } | undefined;
 
-  if (!user) return null;
-
   return (
     <main className="flex min-h-screen flex-col bg-[#0f0f0f] font-sans" dir="rtl"
       style={{ paddingTop: "var(--safe-top)", paddingBottom: "var(--safe-bottom)" }}>
