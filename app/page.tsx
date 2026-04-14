@@ -118,7 +118,7 @@ export default function HomePage() {
 
   function startRecording() {
     if (!user) {
-      void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
+      void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
       return;
     }
     const SR = (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown }).SpeechRecognition
@@ -194,7 +194,7 @@ export default function HomePage() {
       if (!session) {
         // احفظ الـ transcript قبل التحويل لـ Google
         sessionStorage.setItem("pending_transcript", text);
-        await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
+        await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
         return;
       }
       const res = await fetch("/api/extract-task", {
@@ -214,7 +214,7 @@ export default function HomePage() {
   async function handleSave() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
+      await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
       return;
     }
     setSaving(true);
@@ -291,7 +291,7 @@ export default function HomePage() {
           </button>
         ) : (
           <button
-            onClick={() => void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } })}
+            onClick={() => void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } })}
             className="rounded-2xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-500 transition-colors"
           >
             دخول
