@@ -13,7 +13,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#0f0f0f] px-6" dir="rtl">
       <div className="flex flex-col items-center gap-6 text-center">
-        <span className="text-7xl">💎</span>
+        <span className="text-7xl">🧑🏿‍💼</span>
         <h1 className="text-3xl font-extrabold text-white">جوهر</h1>
         <p className="text-base font-semibold text-violet-400">سكرتيرك الشخصي</p>
         <p className="text-sm text-white/40 max-w-xs leading-relaxed">ما تحتاج أحد غيره لترتيب مهامك — فقط تكلّم وجوهر يتولى الباقي</p>
