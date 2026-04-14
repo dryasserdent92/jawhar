@@ -71,22 +71,7 @@ export default function HomePage() {
   const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setUser(session.user);
-        void loadTasks(session.user.id);
-        // استرجع transcript المحفوظ قبل OAuth redirect
-        const pending = sessionStorage.getItem("pending_transcript");
-        if (pending) {
-          sessionStorage.removeItem("pending_transcript");
-          setTranscript(pending);
-          void processTranscriptWithSession(pending, session.access_token);
-        }
-      } else {
-        setLoading(false);
-      }
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         setUser(session.user);
         void loadTasks(session.user.id);
@@ -97,6 +82,8 @@ export default function HomePage() {
           setTranscript(pending);
           void processTranscriptWithSession(pending, session.access_token);
         }
+      } else if (event === "INITIAL_SESSION") {
+        setLoading(false);
       }
     });
     return () => subscription.unsubscribe();
@@ -118,7 +105,7 @@ export default function HomePage() {
 
   function startRecording() {
     if (!user) {
-      void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
+      void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
       return;
     }
     const SR = (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown }).SpeechRecognition
@@ -194,7 +181,7 @@ export default function HomePage() {
       if (!session) {
         // احفظ الـ transcript قبل التحويل لـ Google
         sessionStorage.setItem("pending_transcript", text);
-        await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
+        await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
         return;
       }
       const res = await fetch("/api/extract-task", {
@@ -214,7 +201,7 @@ export default function HomePage() {
   async function handleSave() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } });
+      await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } });
       return;
     }
     setSaving(true);
@@ -291,7 +278,7 @@ export default function HomePage() {
           </button>
         ) : (
           <button
-            onClick={() => void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/auth/callback` } })}
+            onClick={() => void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/` } })}
             className="rounded-2xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-500 transition-colors"
           >
             دخول
