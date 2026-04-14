@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getUserIdFromRequest } from "../../../lib/auth";
 
 export async function POST(req: NextRequest) {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-
   const { title, remind_at, notes, transcript } =
     (await req.json()) as { title: string; remind_at: string | null; notes: string | null; transcript?: string };
 
@@ -16,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("tasks")
-    .insert({ user_id: userId, title, remind_at, notes, transcript })
+    .insert({ title, remind_at, notes, transcript })
     .select()
     .single();
 
