@@ -15,7 +15,8 @@ export default function LoginPage() {
       <div className="flex flex-col items-center gap-6 text-center">
         <span className="text-7xl">💎</span>
         <h1 className="text-3xl font-extrabold text-white">جوهر</h1>
-        <p className="text-sm text-white/40">سجّل صوتك وجوهر يستخرج مهامك وتذكيراتك</p>
+        <p className="text-base font-semibold text-violet-400">سكرتيرك الشخصي</p>
+        <p className="text-sm text-white/40 max-w-xs leading-relaxed">ما تحتاج أحد غيره لترتيب مهامك — فقط تكلّم وجوهر يتولى الباقي</p>
         <button
           onClick={() => void signInWithGoogle()}
           className="mt-4 flex items-center gap-3 rounded-2xl bg-white px-6 py-3.5 text-sm font-bold text-gray-800 shadow-lg hover:bg-gray-100 transition-colors"

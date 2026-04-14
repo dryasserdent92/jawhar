@@ -232,8 +232,9 @@ export default function HomePage() {
       <div className="flex items-center justify-between px-5 py-4">
         <div>
           <h1 className="text-2xl font-extrabold text-white">جوهر 💎</h1>
-          <p className="text-xs text-white/40">
-            {tasks.length > 0 ? `${tasks.length} مهمة بانتظارك` : "لا توجد مهام — ابدأ بالتسجيل"}
+          <p className="text-xs text-violet-400/80 font-medium">سكرتيرك الشخصي — ما تحتاج أحد غيره</p>
+          <p className="text-xs text-white/30 mt-0.5">
+            {tasks.length > 0 ? `${tasks.length} مهمة بانتظارك` : "قل مهمتك وجوهر يرتبها لك"}
           </p>
         </div>
         <button onClick={() => void supabase.auth.signOut()} className="shrink-0">
